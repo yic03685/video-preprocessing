@@ -5,5 +5,8 @@ chunks
 bbox
 __pycache__
 
+#output folder
+preproccessed/*
+
 *.zip
 *.csv
