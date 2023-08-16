@@ -12,7 +12,7 @@ from skimage.transform import resize
 warnings.filterwarnings("ignore")
 
 DEVNULL = open(os.devnull, 'wb')
-REF_FRAME_SIZE = 360
+REF_FRAME_SIZE = 360 # this is used to resize the frame so it saves gpu memories
 REF_FPS = 25
 
 
@@ -121,15 +121,34 @@ def crop_video(person_id, video_id, video_path, args):
 
     return chunks_data
 
-
-def download(video_id, args):
+def download(video_id, proxy=None):
+    """
+    ytb_id: youtube_id
+    save_folder: save video folder
+    proxy: proxy url, defalut None
+    """
     video_path = os.path.join(args.video_folder, video_id + ".mp4")
-    subprocess.call([args.youtube, '-f', "''best/mp4''", '--write-auto-sub', '--write-sub',
-                     '--sub-lang', 'en', '--skip-unavailable-fragments',
-                     "https://www.youtube.com/watch?v=" + video_id, "--output",
-                     video_path], stdout=DEVNULL, stderr=DEVNULL)
-    return video_path
 
+    if proxy is not None:
+        proxy_cmd = "--proxy {}".format(proxy)
+    else:
+        proxy_cmd = ""
+    if not os.path.exists(video_path):
+        down_video = " ".join([
+            "yt-dlp",
+            proxy_cmd,
+            '-f', "'bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio'",
+            '--skip-unavailable-fragments',
+            '--merge-output-format', 'mp4',
+            "https://www.youtube.com/watch?v=" + video_id, "--output",
+            video_path, "--external-downloader", "aria2c",
+            "--external-downloader-args", '"-x 16 -k 1M"'
+        ])
+        print(down_video)
+        status = os.system(down_video)
+        if status != 0:
+            print(f"video not found: {video_id}")
+    return video_path    
 
 def split_in_utterance(person_id, video_id, args):
     video_path = os.path.join(args.video_folder, video_id + ".mp4")
@@ -170,7 +189,7 @@ def run(params):
     # update the config options with the config file
     if args.estimate_bbox:
         import face_alignment
-        fa = face_alignment.FaceAlignment(face_alignment.LandmarksType.TWO_D, flip_input=False)
+        fa = face_alignment.FaceAlignment(face_alignment.LandmarksType.TWO_D, flip_input=False, face_detector='blazeface')
     video_folder = os.path.join(args.annotations_folder, person_id)
     
     chunks_data = []
@@ -178,7 +197,7 @@ def run(params):
         intermediate_files = []
         try:
             if args.download:
-                video_path = download(video_id, args)
+                video_path = download(video_id)
                 intermediate_files.append(video_path)
 
             if args.split_in_utterance:
@@ -204,8 +223,8 @@ def run(params):
                 path = os.path.join(args.chunk_folder, video_id + '*.mp4')
                 for chunk in glob.glob(path):
                     if not os.path.exists(os.path.join(args.bbox_folder, os.path.basename(chunk)[:-4] + '.txt')):
-                       print ("BBox not found %s" % chunk)
-                       continue
+                        print ("BBox not found %s" % chunk)
+                        continue
                     chunks_data += crop_video(person_id, video_id, chunk, args)
 
             if args.remove_intermediate_results:

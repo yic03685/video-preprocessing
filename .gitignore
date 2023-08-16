@@ -1,5 +1,9 @@
 txt
 trained
+videos
+chunks
+bbox
+__pycache__
 
 *.zip
 *.csv
